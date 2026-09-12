@@ -18,30 +18,27 @@ let platformExcludes = ["Apple", "Mac", "iOS"]
 let platformExcludes: [String] = excludeAppleSources ? ["Apple", "Mac", "iOS"] : []
 #endif
 
-let buildInfoTargets: [Target] = [
-    .executableTarget(
-        name: "SwiftTermBuildInfoGenerator",
-        path: "Sources/SwiftTermBuildInfoGenerator"
-    ),
-    .plugin(
-        name: "SwiftTermBuildInfoPlugin",
-        capability: .buildTool(),
-        dependencies: ["SwiftTermBuildInfoGenerator"]
-    )
-]
-
-let graphicsDependencies: [Target.Dependency] = [
-    .product(
-        name: "PNG",
-        package: "swift-png",
-        condition: .when(platforms: [.linux, .windows])
-    ),
-    .product(
-        name: "LZ77",
-        package: "swift-png",
-        condition: .when(platforms: [.linux, .windows])
-    ),
-]
+// This fork removes two things upstream's build carries that this
+// consumer (TimmyTerm) doesn't need and can't accept, without touching
+// anything else -- the actual point of this fork is everything *else*
+// upstream has fixed since the previous pin, in scrollback/rendering/
+// gesture code untouched here:
+//
+// 1. `SwiftTermBuildInfoPlugin` (an SPM build-tool plugin) -- Xcode
+//    refuses to run any build-tool plugin without a one-time manual
+//    "Trust & Enable" click in its own GUI, which breaks a headless/CI
+//    build outright. See `Sources/SwiftTerm/GeneratedBuildInfo.swift`
+//    for the static stand-in replacing what it would have generated.
+// 2. The Kitty graphics protocol's `swift-png`/`h` dependencies -- both
+//    are already conditioned to `.linux`/`.windows` only upstream (see
+//    the removed `graphicsDependencies` this replaces), so iOS never
+//    linked them in the first place; removing the `Package.swift`-level
+//    declaration only stops SPM from having to resolve/fetch them at
+//    all. `KittyGraphics.swift`'s own `#if canImport(PNG)`/`#if canImport(LZ77)`
+//    guards mean this is a clean no-op for Apple platforms, which fall
+//    back to `CoreGraphics`/`ImageIO` regardless.
+let buildInfoTargets: [Target] = []
+let graphicsDependencies: [Target.Dependency] = []
 
 let portableTraitSettings: [SwiftSetting] = [
     .define("SWIFTTERM_EMBEDDED", .when(traits: ["Embedded"])),
@@ -67,10 +64,7 @@ let swiftTermTarget: Target = .target(
         "Mac/README.md",
         "Apple/Metal/Shaders.metal",
     ],
-    swiftSettings: swiftTermSettings,
-    plugins: [
-        .plugin(name: "SwiftTermBuildInfoPlugin")
-    ]
+    swiftSettings: swiftTermSettings
 )
 
 #if os(Windows)
@@ -211,7 +205,6 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.4.3"),
-        .package(url: "https://github.com/tayloraswift/swift-png", from: "4.5.0"),
     ],
 //        .package(url: "https://github.com/swiftlang/swift-subprocess", revision: "426790f3f24afa60b418450da0afaa20a8b3bdd4")
     targets: targets,
