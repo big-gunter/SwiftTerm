@@ -3995,17 +3995,6 @@ extension TerminalView: UIAccessibilityReadingContent {
 }
 
 
-#if canImport(UIKit) && DEBUG
-#Preview {
-    SwiftUITerminalView { t in
-        t.nativeBackgroundColor = UIColor.blue
-        t.selectedTextBackgroundColor = UIColor.red
-        t.caretColor = UIColor.blue
-        t.feed(text: "🖐🏾 or 👩‍👩‍👦‍👦")
-    }
-}
-#endif
-
 #endif
 
 #endif // !SWIFTTERM_EMBEDDED

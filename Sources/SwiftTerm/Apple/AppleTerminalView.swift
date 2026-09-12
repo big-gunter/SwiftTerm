@@ -4867,17 +4867,6 @@ extension TerminalViewDelegate {
     }
 }
 
-#if canImport(UIKit) && DEBUG
-#Preview {
-    SwiftUITerminalView { t in
-        t.nativeBackgroundColor = UIColor.black
-        t.selectedTextBackgroundColor = UIColor.red
-        t.caretColor = UIColor.blue
-        t.feed(text: "م اَلْفِرَاق\n\rbbفِaa\n\r123456\n\r🖐🏾 or 👩‍👩‍👦‍👦")
-    }
-}
-#endif
-
 #endif
 
 #endif // !SWIFTTERM_EMBEDDED
