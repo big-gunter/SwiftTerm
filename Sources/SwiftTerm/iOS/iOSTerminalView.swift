@@ -2016,22 +2016,39 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
                 }
                 setManualScrollingLocked(false, terminal: terminal)
             }
+            // Scrolling back down to the live region needs a fresh snapshot for
+            // the same reason scrolling up into the history does -- see the
+            // note below. This cannot be conditional on `yDisp` having moved
+            // *here*: other paths (`resetManualScrollTracking`, a buffer-shrink
+            // re-pin) put `yDisp` back at the bottom on their own, leaving a
+            // snapshot still captured around the row the user had scrolled to,
+            // which then paints the live region as an empty black band.
+            resyncSnapshotToScrollPosition()
             return
         }
 
-        // Freeze auto-follow only while the finger is physically down
-        // (isTracking). Excluding the momentum coast is essential: after the
-        // finger lifts, deceleration keeps firing sync while streaming output
-        // extends the content and the bottom recedes ahead of the coasting
-        // offset — treating that "not at the bottom yet" reading as a manual
-        // scroll would re-freeze a view the user just flung to the bottom. This
-        // must key off isTracking, not isDragging: on device isDragging stays
-        // true through the entire coast, so it fails to exclude momentum. It also
-        // covers layout/system-driven offset changes (startup sizing, rotation,
-        // keyboard insets, buffer shrink), which are never a manual scroll.
-        guard isTracking else {
-            return
-        }
+        // `yDisp` must follow the scroll position for *every* offset change,
+        // not just a finger-down drag. The draw path can only ever paint rows
+        // the render snapshot covers, and the snapshot spans exactly
+        // [yDisp, yDisp+rows) (`TerminalSnapshot.refresh` sets `firstRow =
+        // buffer.yDisp`). So any offset the terminal's own `yDisp` has not
+        // followed maps onto rows the snapshot does not hold, every row lookup
+        // in `drawTerminalContents` returns nil, and the viewport paints as an
+        // empty black region. That is what a momentum coast (finger already
+        // lifted, `isTracking` false), an `accessibilityScroll`, a
+        // programmatic `setContentOffset`, or a UIKit inset-driven offset
+        // adjustment all used to produce: scrollback that is genuinely in the
+        // buffer but renders as darkness.
+        //
+        // Freezing auto-follow is a separate decision and keeps its narrower
+        // rule: only a scroll the user actually drove should stop the view
+        // from following new output. `isTracking` alone was too narrow even
+        // for that -- a flick leaves the finger off the glass for the whole
+        // coast -- so the freeze keys off the drag/decelerate phases together,
+        // while a layout- or inset-driven offset change (startup sizing,
+        // rotation, keyboard insets, buffer shrink) still moves `yDisp`
+        // without ever claiming the user scrolled.
+        let isUserDrivenScroll = isTracking || isDragging || isDecelerating
 
         withTerminal { terminal in
             let displayBuffer = terminal.displayBuffer
@@ -2042,8 +2059,30 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
             if displayBuffer.yDisp != row {
                 terminal.setViewYDisp(row)
             }
-            setManualScrollingLocked(true, terminal: terminal)
+            if isUserDrivenScroll {
+                setManualScrollingLocked(true, terminal: terminal)
+            }
         }
+
+        resyncSnapshotToScrollPosition()
+    }
+
+    /// Brings the render snapshot onto the rows the *next* draw will paint.
+    ///
+    /// `setViewYDisp` only assigns `buffer.yDisp`; nothing about it touches the
+    /// snapshot the draw path reads. Marking the frame driver dirty is not
+    /// enough on its own either: UIKit repaints a scrolled scroll view before
+    /// the next frame tick lands, so that repaint still runs against the
+    /// snapshot captured around the *previous* scroll position and paints rows
+    /// it does not hold -- which is to say, nothing at all. Refreshing
+    /// synchronously here (`withUpdatedCursor` re-captures the snapshot under
+    /// the terminal lock, in the established lock order, and repositions the
+    /// caret, whose iOS placement is derived from the same absolute row) means
+    /// the repaint that follows always has the rows it is about to draw.
+    private func resyncSnapshotToScrollPosition() {
+        updateCursorPosition()
+        invalidateTerminalContents()
+        setNeedsDisplay(bounds)
     }
 
     func getCurrentGraphicsContext () -> CGContext?
